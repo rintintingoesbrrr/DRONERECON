@@ -1,0 +1,28 @@
+usar telefonos como posibles microfonos y feedear todo el sistema usando los microfonos del sistema
+se tiene que usar el gps apra conseguir la distancia relativa entre los nodos 
+
+
+1. encontrar manera de enviar datos de audio de manera legible usando ESP NOW y ESP MESH
+	1.1 usando esp se pueden enviar, usaremos pequeños microfonos y baterias de litio para independencia del sistema
+	1.2 el servidor que reciba debe de tener uno o 2 esp conectados a si por conexion serial para manejar la entrada de datos y evitar bottleneck
+
+2. manejar el bottleneck que se generara muy probalemnte a partir de 3 microfonos
+	2.1 utilizar las latencias de cada uno de los nodso del sistema para sincronizar los audios y tener datos en tiempo real 
+	2.2 chance usar NTP para que todos los nodos esten sincronizados
+	2.3 probar distancias
+	2.4 aqui ya podemos empezar a probar con sonidos de drones reales para ver que tanto ruido hay en las transmisiones y detectar maneras de quitarlo 
+	2.5 probar diferntes alturas y distancias entre microfonos 
+
+3. buscar o entrenar algun modelo de ML para detectar sonidos de drones o de fotos de drones
+	3.1 aun no tengo idea de como buscar estos modelos falta investigacion
+4. usar esto y las leyes de LOG para  calcular la distancia entre los microfonos y los drones 
+	4.1 investigar si el approach de logaritmos es el adecuado usar otro
+5. exponer estos datos en un dashboard
+	5.1 checar como hacer que el front sea mas bonito 
+
+
+
+6. extra feedear coordenadas a un laser para apuntar a los drones 
+
+	6.1 ya tenemos codigo para hacer eso cons ervos deberia de ser mas snecillo
+

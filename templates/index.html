@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Audio Streaming</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            padding: 20px;
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .visualizations {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+        .chart-container {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .latency-container {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .latency-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .latency-values {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            padding: 10px;
+        }
+        .latency-item {
+            background-color: #333;
+            padding: 15px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .latency-client {
+            font-weight: bold;
+        }
+        .latency-value {
+            font-family: monospace;
+            font-size: 1.1em;
+            padding: 5px 10px;
+            background-color: #444;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 10px;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-left: 20px;
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 4px;
+            background-color: #333;
+        }
+        .status.connected {
+            background-color: #4CAF50;
+        }
+        .status.disconnected {
+            background-color: #f44336;
+        }
+        .error-message {
+            color: #f44336;
+            margin-top: 10px;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Real-Time Audio Streaming</h1>
+        </div>
+        
+        <div class="controls">
+            <button id="startButton">Start Streaming</button>
+            <button id="stopButton" disabled>Stop Streaming</button>
+            <span class="status disconnected" id="connectionStatus">Not connected</span>
+            <div class="error-message" id="errorMessage"></div>
+        </div>
+        
+        <div class="visualizations">
+            <div class="chart-container">
+                <canvas id="audioWaveform"></canvas>
+            </div>
+            <div class="latency-container">
+                <div class="latency-title">Network Latency</div>
+                <div class="latency-values" id="latencyValues"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let audioContext = null;
+        let mediaStream = null;
+        let processor = null;
+        let isStreaming = false;
+
+        // Setup waveform chart
+        const waveformCtx = document.getElementById('audioWaveform').getContext('2d');
+
+        const waveformChart = new Chart(waveformCtx, {
+            type: 'line',
+            data: {
+                labels: Array(1024).fill(''),
+                datasets: []
+            },
+            options: {
+                responsive: true,
+                animation: false,
+                scales: {
+                    y: {
+                        min: -1,
+                        max: 1,
+                        grid: {
+                            color: '#333'
+                        },
+                        ticks: {
+                            color: '#fff'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: '#333'
+                        },
+                        ticks: {
+                            display: false
+                        }
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Audio Waveforms',
+                        color: '#ffffff',
+                        font: {
+                            size: 16
+                        }
+                    },
+                    legend: {
+                        labels: {
+                            color: '#ffffff'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Socket.io event handlers
+        socket.on('connect', () => {
+            document.getElementById('connectionStatus').textContent = 'Connected';
+            document.getElementById('connectionStatus').classList.remove('disconnected');
+            document.getElementById('connectionStatus').classList.add('connected');
+        });
+
+        socket.on('disconnect', () => {
+            document.getElementById('connectionStatus').textContent = 'Disconnected';
+            document.getElementById('connectionStatus').classList.remove('connected');
+            document.getElementById('connectionStatus').classList.add('disconnected');
+            stopStreaming();
+        });
+
+        socket.on('streams_update', (streams) => {
+            updateVisualization(streams);
+        });
+
+        // Update visualization
+        function updateVisualization(streams) {
+            // Update waveform chart
+            waveformChart.data.datasets = Object.entries(streams).map(([clientId, data], index) => ({
+                label: `Client ${clientId.slice(0, 6)}`,
+                data: data.data,
+                borderColor: `hsl(${index * 137.508}deg, 70%, 50%)`,
+                borderWidth: 1,
+                fill: false
+            }));
+            waveformChart.update('none');
+
+            // Update latency values
+            const latencyContainer = document.getElementById('latencyValues');
+            latencyContainer.innerHTML = '';
+
+            Object.entries(streams).forEach(([clientId, data], index) => {
+                const latencyItem = document.createElement('div');
+                latencyItem.className = 'latency-item';
+                latencyItem.innerHTML = `
+                    <span class="latency-client" style="color: hsl(${index * 137.508}deg, 70%, 50%)">
+                        Client ${clientId.slice(0, 6)}
+                    </span>
+                    <span class="latency-value">${data.latency.toFixed(1)} ms</span>
+                `;
+                latencyContainer.appendChild(latencyItem);
+            });
+        }
+
+        // Audio streaming functions
+        async function startStreaming() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new AudioContext();
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                processor = audioContext.createScriptProcessor(1024, 1, 1);
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                processor.onaudioprocess = (e) => {
+                    if (!isStreaming) return;
+                    
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const audioData = new Float32Array(inputData);
+                    
+                    socket.emit('audio_data', {
+                        audio_data: btoa(String.fromCharCode.apply(null, new Uint8Array(audioData.buffer))),
+                        timestamp: Date.now() / 1000
+                    });
+                };
+
+                isStreaming = true;
+                document.getElementById('startButton').disabled = true;
+                document.getElementById('stopButton').disabled = false;
+                document.getElementById('errorMessage').style.display = 'none';
+
+            } catch (error) {
+                console.error('Error starting stream:', error);
+                document.getElementById('errorMessage').textContent = 'Error accessing microphone. Please ensure microphone permissions are granted.';
+                document.getElementById('errorMessage').style.display = 'block';
+            }
+        }
+
+        function stopStreaming() {
+            if (processor) {
+                processor.disconnect();
+                processor = null;
+            }
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            
+            isStreaming = false;
+            document.getElementById('startButton').disabled = false;
+            document.getElementById('stopButton').disabled = true;
+        }
+
+        // Event listeners
+        document.getElementById('startButton').addEventListener('click', startStreaming);
+        document.getElementById('stopButton').addEventListener('click', stopStreaming);
+    </script>
+</body>
+</html>
