@@ -26,3 +26,5 @@ se tiene que usar el gps apra conseguir la distancia relativa entre los nodos
 
 	6.1 ya tenemos codigo para hacer eso cons ervos deberia de ser mas snecillo
 
+chrome://flags/#unsafely-treat-insecure-origin-as-secure
+
