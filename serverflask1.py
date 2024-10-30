@@ -138,19 +138,23 @@ def handle_audio_data(data):
         timestamp = data['timestamp']
         
         if len(audio_data) == audio_manager.CHUNK:
-            audio_manager.update_stream_data(client_id, audio_data, timestamp)
+            # Update stream data without synchronization logic
+            with audio_manager.data_lock:
+                if client_id in audio_manager.active_streams:
+                    audio_manager.active_streams[client_id]['data'] = audio_data
+                    audio_manager.active_streams[client_id]['last_update'] = datetime.now()
+                    # Commenting out latency calculation used for sync
+                    # audio_manager.active_streams[client_id]['latency'] = \
+                    #     (datetime.now().timestamp() - timestamp) * 1000
+                    audio_manager.active_streams[client_id]['latency'] = 0
             
-            # Disabled stream synchronization broadcast
-            # This would normally sync all clients' data:
-            # socketio.emit('streams_update', audio_manager.get_streams_data())
+            # Broadcast all streams' data
+            socketio.emit('streams_update', audio_manager.get_streams_data())
             
-            # Instead, only update the sender's own stream
-            socketio.emit('streams_update', {
-                client_id: {
-                    'data': audio_data.tolist(),
-                    'latency': (datetime.now().timestamp() - timestamp) * 1000
-                }
-            })
+    except Exception as e:
+        print(f"Error processing audio data: {e}")
+        import traceback
+        traceback.print_exc()
             
     except Exception as e:
         print(f"Error processing audio data: {e}")
